@@ -171,6 +171,7 @@ mod tests {
                 "setidletimeout",
                 "setworldspawn",
                 "stop",
+                "stopsound",
                 "summon",
                 "teleport",
                 "tp",

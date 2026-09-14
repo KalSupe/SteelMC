@@ -14,20 +14,6 @@ use super::super::{
 
 use crate::player::Player;
 
-const SOUND_SOURCES: [SoundSource; 11] = [
-    SoundSource::Master,
-    SoundSource::Music,
-    SoundSource::Records,
-    SoundSource::Weather,
-    SoundSource::Blocks,
-    SoundSource::Hostile,
-    SoundSource::Neutral,
-    SoundSource::Players,
-    SoundSource::Ambient,
-    SoundSource::Voice,
-    SoundSource::Ui,
-];
-
 pub(super) fn registration() -> CommandRegistration<CommandSource> {
     CommandRegistration::new(Identifier::vanilla_static("stopsound"), |_| command())
 }
@@ -36,9 +22,13 @@ fn command() -> CommandNodeBuilder<CommandSource, SteelCommandRuntime> {
     let mut targets =
         argument("targets", SteelArgumentType::players()).executes(stop_all_for_targets);
 
-    for source in SOUND_SOURCES {
+    for source in SoundSource::VALUES {
         targets = targets.then(source_command(source));
     }
+
+    targets = targets.then(
+        literal("*").executes(move |context| stop_all_for_targets_with_source(context, None)),
+    );
 
     literal("stopsound")
         .executes(stop_all_for_source)
@@ -47,7 +37,7 @@ fn command() -> CommandNodeBuilder<CommandSource, SteelCommandRuntime> {
 
 fn source_command(source: SoundSource) -> CommandNodeBuilder<CommandSource, SteelCommandRuntime> {
     literal(source.name())
-        .executes(move |context| stop_sound(context, source))
+        .executes(move |context| stop_all_for_targets_with_source(context, Some(source)))
         .then(
             argument("sound", SteelArgumentType::sound())
                 .executes(move |context| stop_sound(context, source)),
@@ -62,7 +52,7 @@ fn stop_all_for_source(
         .player()
         .map_or_else(Vec::new, |player| vec![Arc::clone(player)]);
 
-    execute(context, None, None, &targets)
+    execute(None, &targets)
 }
 
 fn stop_all_for_targets(
@@ -70,7 +60,16 @@ fn stop_all_for_targets(
 ) -> Result<i32, CommandSyntaxError> {
     let targets = context.players("targets")?;
 
-    execute(context, None, None, &targets)
+    execute(None, &targets)
+}
+
+fn stop_all_for_targets_with_source(
+    context: &SteelCommandContext<CommandSource>,
+    source: Option<SoundSource>,
+) -> Result<i32, CommandSyntaxError> {
+    let targets = context.players("targets")?;
+
+    execute(source, &targets)
 }
 
 fn stop_sound(
@@ -78,24 +77,31 @@ fn stop_sound(
     source: SoundSource,
 ) -> Result<i32, CommandSyntaxError> {
     let targets = context.players("targets")?;
+    let sound = context.identifier("sound")?.clone();
 
-    let sound = context.identifier("sound").ok().cloned();
-
-    execute(context, Some(source), sound, &targets)
+    execute_sound(source, sound, &targets)
 }
 
 fn execute(
-    _context: &SteelCommandContext<CommandSource>,
     source: Option<SoundSource>,
-    sound: Option<Identifier>,
     targets: &[Arc<Player>],
 ) -> Result<i32, CommandSyntaxError> {
-    let source = source.map(|source| source.as_varint());
-
     for target in targets {
-        println!("Sending CStopSound to player");
+        target.send_packet(CStopSound::new(source, None));
+    }
 
-        target.send_packet(CStopSound::new(source, sound.clone()));
+    i32::try_from(targets.len()).map_err(|_| {
+        CommandSyntaxError::dynamic("Target player count exceeds the command result range")
+    })
+}
+
+fn execute_sound(
+    source: SoundSource,
+    sound: Identifier,
+    targets: &[Arc<Player>],
+) -> Result<i32, CommandSyntaxError> {
+    for target in targets {
+        target.send_packet(CStopSound::new(Some(source), Some(sound.clone())));
     }
 
     i32::try_from(targets.len()).map_err(|_| {
