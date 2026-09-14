@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use steel_protocol::packets::game::{CStopSound, SoundSource};
-use steel_utils::Identifier;
+use steel_utils::{Identifier, translations};
+use text_components::TextComponent;
 
 use super::super::{
     brigadier::{CommandNodeBuilder, CommandSyntaxError},
@@ -27,32 +28,20 @@ fn command() -> CommandNodeBuilder<CommandSource, SteelCommandRuntime> {
     }
 
     targets = targets.then(
-        literal("*").executes(move |context| stop_all_for_targets_with_source(context, None)),
+        literal("*")
+            .then(argument("sound", SteelArgumentType::sound()).executes(stop_sound_any_source)),
     );
 
-    literal("stopsound")
-        .executes(stop_all_for_source)
-        .then(targets)
+    literal("stopsound").then(targets)
 }
 
 fn source_command(source: SoundSource) -> CommandNodeBuilder<CommandSource, SteelCommandRuntime> {
     literal(source.name())
-        .executes(move |context| stop_all_for_targets_with_source(context, Some(source)))
+        .executes(move |context| stop_all_for_targets_with_source(context, source))
         .then(
             argument("sound", SteelArgumentType::sound())
                 .executes(move |context| stop_sound(context, source)),
         )
-}
-
-fn stop_all_for_source(
-    context: &SteelCommandContext<CommandSource>,
-) -> Result<i32, CommandSyntaxError> {
-    let targets = context
-        .source()
-        .player()
-        .map_or_else(Vec::new, |player| vec![Arc::clone(player)]);
-
-    execute(None, &targets)
 }
 
 fn stop_all_for_targets(
@@ -60,16 +49,48 @@ fn stop_all_for_targets(
 ) -> Result<i32, CommandSyntaxError> {
     let targets = context.players("targets")?;
 
-    execute(None, &targets)
+    execute(None, None, &targets)?;
+
+    context.source().send_success(
+        &TextComponent::from(&translations::COMMANDS_STOPSOUND_SUCCESS_SOURCELESS_ANY),
+        true,
+    );
+
+    target_count(&targets)
 }
 
 fn stop_all_for_targets_with_source(
     context: &SteelCommandContext<CommandSource>,
-    source: Option<SoundSource>,
+    source: SoundSource,
 ) -> Result<i32, CommandSyntaxError> {
     let targets = context.players("targets")?;
 
-    execute(source, &targets)
+    execute(Some(source), None, &targets)?;
+
+    let message = translations::COMMANDS_STOPSOUND_SUCCESS_SOURCE_ANY
+        .message([TextComponent::plain(source.name())])
+        .component();
+
+    context.source().send_success(&message, true);
+
+    target_count(&targets)
+}
+
+fn stop_sound_any_source(
+    context: &SteelCommandContext<CommandSource>,
+) -> Result<i32, CommandSyntaxError> {
+    let targets = context.players("targets")?;
+    let sound = context.identifier("sound")?.clone();
+
+    execute(None, Some(&sound), &targets)?;
+
+    let message = translations::COMMANDS_STOPSOUND_SUCCESS_SOURCELESS_SOUND
+        .message([TextComponent::plain(sound.to_string())])
+        .component();
+
+    context.source().send_success(&message, true);
+
+    target_count(&targets)
 }
 
 fn stop_sound(
@@ -79,31 +100,33 @@ fn stop_sound(
     let targets = context.players("targets")?;
     let sound = context.identifier("sound")?.clone();
 
-    execute_sound(source, sound, &targets)
+    execute(Some(source), Some(&sound), &targets)?;
+
+    let message = translations::COMMANDS_STOPSOUND_SUCCESS_SOURCE_SOUND
+        .message([
+            TextComponent::plain(sound.to_string()),
+            TextComponent::plain(source.name()),
+        ])
+        .component();
+
+    context.source().send_success(&message, true);
+
+    target_count(&targets)
 }
 
 fn execute(
     source: Option<SoundSource>,
+    sound: Option<&Identifier>,
     targets: &[Arc<Player>],
-) -> Result<i32, CommandSyntaxError> {
+) -> Result<(), CommandSyntaxError> {
     for target in targets {
-        target.send_packet(CStopSound::new(source, None));
+        target.send_packet(CStopSound::new(source, sound.cloned()));
     }
 
-    i32::try_from(targets.len()).map_err(|_| {
-        CommandSyntaxError::dynamic("Target player count exceeds the command result range")
-    })
+    Ok(())
 }
 
-fn execute_sound(
-    source: SoundSource,
-    sound: Identifier,
-    targets: &[Arc<Player>],
-) -> Result<i32, CommandSyntaxError> {
-    for target in targets {
-        target.send_packet(CStopSound::new(Some(source), Some(sound.clone())));
-    }
-
+fn target_count(targets: &[Arc<Player>]) -> Result<i32, CommandSyntaxError> {
     i32::try_from(targets.len()).map_err(|_| {
         CommandSyntaxError::dynamic("Target player count exceeds the command result range")
     })
