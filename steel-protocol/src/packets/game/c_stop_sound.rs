@@ -20,7 +20,8 @@ pub struct CStopSound {
 }
 
 impl CStopSound {
-    pub fn new(source: Option<SoundSource>, sound: Option<Identifier>) -> Self {
+    #[must_use]
+    pub const fn new(source: Option<SoundSource>, sound: Option<Identifier>) -> Self {
         let mut flags = 0;
 
         if source.is_some() {

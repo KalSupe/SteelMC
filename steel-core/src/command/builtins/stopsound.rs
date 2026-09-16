@@ -49,7 +49,7 @@ fn stop_all_for_targets(
 ) -> Result<i32, CommandSyntaxError> {
     let targets = context.players("targets")?;
 
-    execute(None, None, &targets)?;
+    execute(None, None, &targets);
 
     context.source().send_success(
         &TextComponent::from(&translations::COMMANDS_STOPSOUND_SUCCESS_SOURCELESS_ANY),
@@ -65,7 +65,7 @@ fn stop_all_for_targets_with_source(
 ) -> Result<i32, CommandSyntaxError> {
     let targets = context.players("targets")?;
 
-    execute(Some(source), None, &targets)?;
+    execute(Some(source), None, &targets);
 
     let message = translations::COMMANDS_STOPSOUND_SUCCESS_SOURCE_ANY
         .message([TextComponent::plain(source.name())])
@@ -82,7 +82,7 @@ fn stop_sound_any_source(
     let targets = context.players("targets")?;
     let sound = context.identifier("sound")?.clone();
 
-    execute(None, Some(&sound), &targets)?;
+    execute(None, Some(&sound), &targets);
 
     let message = translations::COMMANDS_STOPSOUND_SUCCESS_SOURCELESS_SOUND
         .message([TextComponent::plain(sound.to_string())])
@@ -100,7 +100,7 @@ fn stop_sound(
     let targets = context.players("targets")?;
     let sound = context.identifier("sound")?.clone();
 
-    execute(Some(source), Some(&sound), &targets)?;
+    execute(Some(source), Some(&sound), &targets);
 
     let message = translations::COMMANDS_STOPSOUND_SUCCESS_SOURCE_SOUND
         .message([
@@ -114,16 +114,10 @@ fn stop_sound(
     target_count(&targets)
 }
 
-fn execute(
-    source: Option<SoundSource>,
-    sound: Option<&Identifier>,
-    targets: &[Arc<Player>],
-) -> Result<(), CommandSyntaxError> {
+fn execute(source: Option<SoundSource>, sound: Option<&Identifier>, targets: &[Arc<Player>]) {
     for target in targets {
         target.send_packet(CStopSound::new(source, sound.cloned()));
     }
-
-    Ok(())
 }
 
 fn target_count(targets: &[Arc<Player>]) -> Result<i32, CommandSyntaxError> {
