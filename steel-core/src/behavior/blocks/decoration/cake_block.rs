@@ -25,6 +25,7 @@ use crate::{
     world::{LevelReader, ScheduledTickAccess, World},
 };
 
+/// Behavior for Cakes
 #[block_behavior]
 pub struct CakeBlock {
     block: BlockRef,
